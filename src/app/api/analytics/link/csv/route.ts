@@ -5,6 +5,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserDefaultOrgId } from "@/lib/org";
 
+type AggRow = { date: Date; clicks: number };
+type CsvRow = { day: string; clicks: number };
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
@@ -18,8 +21,9 @@ export async function GET(req: NextRequest) {
   const days = Number(url.searchParams.get("days") ?? "30");
 
   if (!linkId) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  if (!Number.isFinite(days) || days < 1 || days > 365)
+  if (!Number.isFinite(days) || days < 1 || days > 365) {
     return NextResponse.json({ error: "Invalid days" }, { status: 400 });
+  }
 
   // Ensure link belongs to org
   const link = await prisma.link.findFirst({
@@ -32,20 +36,19 @@ export async function GET(req: NextRequest) {
   from.setUTCDate(from.getUTCDate() - (days - 1));
   from.setUTCHours(0, 0, 0, 0);
 
- const rawRows = await prisma.clickAggDaily.findMany({
-  where: { linkId, date: { gte: from } },
-  orderBy: { date: "asc" },
-  select: { date: true, clicks: true },
-});
+  const rawRows = (await prisma.clickAggDaily.findMany({
+    where: { linkId, date: { gte: from } },
+    orderBy: { date: "asc" },
+    select: { date: true, clicks: true },
+  })) as AggRow[];
 
-const rows: Array<{ day: string; clicks: number }> = rawRows.map(
-  (x: { date: Date; clicks: number }) => ({
+  const rows: CsvRow[] = rawRows.map((x: AggRow) => ({
     day: x.date.toISOString().slice(0, 10),
     clicks: x.clicks,
-  })
-);
+  }));
+
   const header = "day,clicks\n";
-  const body = rows.map((r) => `${r.day},${r.clicks}`).join("\n");
+  const body = rows.map((r: CsvRow) => `${r.day},${r.clicks}`).join("\n");
   const csv = header + body + "\n";
 
   return new Response(csv, {
