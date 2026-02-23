@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String?  @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?  // only for Credentials auth
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  domains     Domain[]
+  links       Link[]
+}
+
+model Membership {
+  id   String @id @default(cuid())
+  role String @default("OWNER")
+
+  userId String
+  orgId  String
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+}
+
+model Domain {
+  id       String @id @default(cuid())
+  orgId    String
+  hostname String @unique // e.g. go.client.com
+  verified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  links Link[]
+}
+
+model Link {
+  id          String  @id @default(cuid())
+  orgId       String
+  domainId    String? // null = default domain
+  slug        String
+  destination String
+  enabled     Boolean @default(true)
+
+  tags   String[] @default([])
+  folder String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  domain Domain?      @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  clickEvents   ClickEvent[]
+  clickAggDaily ClickAggDaily[]
+
+  @@unique([orgId, slug])
+}
+
+model ClickEvent {
+  id      String   @id @default(cuid())
+  linkId  String
+  ts      DateTime @default(now())
+  country String?
+  referrer String?
+  device  String?
+  os      String?
+  browser String?
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, ts])
+}
+
+model ClickAggDaily {
+  id     String   @id @default(cuid())
+  linkId String
+  date   DateTime // normalized to 00:00 UTC
+  clicks Int      @default(0)
+
+  country  Json?
+  referrer Json?
+  device   Json?
+  os       Json?
+  browser  Json?
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, date])
+}
+
+//
+// NextAuth required models
+//
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
