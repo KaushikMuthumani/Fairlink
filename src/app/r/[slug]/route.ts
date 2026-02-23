@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(req: Request, ctx: { params?: { slug?: string } }) {
-  // ✅ 1) Get slug from params, with fallback parsing from URL
-  let slug = ctx?.params?.slug;
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ slug: string }> }
+) {
+  // Next.js (build) provides params as a Promise in this version
+  const { slug: rawSlug } = await context.params;
 
+  // Fallback safety: if anything goes weird, parse from URL
+  let slug = rawSlug;
   if (!slug) {
     const pathname = new URL(req.url).pathname; // /r/can
     const parts = pathname.split("/").filter(Boolean); // ["r","can"]
-    slug = parts[1];
+    slug = parts[1] ?? "";
   }
 
-  slug = slug ? decodeURIComponent(slug) : "";
+  slug = decodeURIComponent(slug);
   if (!slug) return new NextResponse("Not found", { status: 404 });
 
-  // ✅ 2) Hostname-based domain routing (strip port)
   const host = (req.headers.get("host") ?? "").split(":")[0].toLowerCase();
 
   const domain = host
@@ -24,7 +29,6 @@ export async function GET(req: Request, ctx: { params?: { slug?: string } }) {
       })
     : null;
 
-  // ✅ 3) Lookup link strictly by slug (never ignored)
   const link = await prisma.link.findFirst({
     where: domain
       ? { slug, domainId: domain.id, enabled: true }
@@ -34,7 +38,7 @@ export async function GET(req: Request, ctx: { params?: { slug?: string } }) {
 
   if (!link) return new NextResponse("Not found", { status: 404 });
 
-  // ✅ 4) Record click async (does not block redirect)
+  // Record click async (don’t block redirect)
   prisma.clickEvent
     .create({
       data: {
