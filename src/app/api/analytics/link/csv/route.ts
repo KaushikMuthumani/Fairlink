@@ -32,19 +32,18 @@ export async function GET(req: NextRequest) {
   from.setUTCDate(from.getUTCDate() - (days - 1));
   from.setUTCHours(0, 0, 0, 0);
 
-  const rows: Array<{ day: string; clicks: number }> = await prisma.clickAggDaily
-    .findMany({
-      where: { linkId, date: { gte: from } },
-      orderBy: { date: "asc" },
-      select: { date: true, clicks: true },
-    })
-    .then((rs) =>
-      rs.map((x) => ({
-        day: x.date.toISOString().slice(0, 10),
-        clicks: x.clicks,
-      }))
-    );
+ const rawRows = await prisma.clickAggDaily.findMany({
+  where: { linkId, date: { gte: from } },
+  orderBy: { date: "asc" },
+  select: { date: true, clicks: true },
+});
 
+const rows: Array<{ day: string; clicks: number }> = rawRows.map(
+  (x: { date: Date; clicks: number }) => ({
+    day: x.date.toISOString().slice(0, 10),
+    clicks: x.clicks,
+  })
+);
   const header = "day,clicks\n";
   const body = rows.map((r) => `${r.day},${r.clicks}`).join("\n");
   const csv = header + body + "\n";
