@@ -2,14 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
-import type { PrismaClient } from "@prisma/client";
-
-type TxClient = Parameters<PrismaClient["$transaction"]>[0] extends (
-  tx: infer T,
-  ...args: any[]
-) => any
-  ? T
-  : never;
 
 function slugify(input: string) {
   return input
@@ -55,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   const passwordHash = await hash(password, 10);
 
-  const result = await prisma.$transaction(async (tx: TxClient) => {
+  const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: { name, email, passwordHash },
       select: { id: true, email: true, name: true },
