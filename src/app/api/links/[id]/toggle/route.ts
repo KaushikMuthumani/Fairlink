@@ -10,20 +10,27 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  const userId = (session?.user as any)?.id as string | undefined;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (session?.user as { id?: string } | null)?.id;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { id } = await context.params;
 
   const orgId = await getOrCreateUserDefaultOrgId(userId);
-  if (!orgId) return NextResponse.json({ error: "No workspace" }, { status: 400 });
+  if (!orgId) {
+    return NextResponse.json({ error: "No workspace" }, { status: 400 });
+  }
 
   const link = await prisma.link.findFirst({
     where: { id, orgId },
     select: { id: true, enabled: true },
   });
 
-  if (!link) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!link) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const updated = await prisma.link.update({
     where: { id: link.id },

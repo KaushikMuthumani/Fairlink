@@ -5,15 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserDefaultOrgId } from "@/lib/org";
 
-type AggRow = {
-  date: Date;
-  clicks: number;
-};
-
-type DayRow = {
-  day: string;
-  clicks: number;
-};
+type AggRow = { date: Date; clicks: number };
+type DayRow = { day: string; clicks: number };
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -24,7 +17,6 @@ export async function GET(req: NextRequest) {
   }
 
   const orgId = await getOrCreateUserDefaultOrgId(userId);
-
   if (!orgId) {
     return NextResponse.json({ error: "No workspace" }, { status: 400 });
   }
@@ -41,7 +33,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid days" }, { status: 400 });
   }
 
-  // Ensure link belongs to org
   const link = await prisma.link.findFirst({
     where: { id: linkId, orgId },
     select: { id: true, slug: true, destination: true, enabled: true },
@@ -55,24 +46,21 @@ export async function GET(req: NextRequest) {
   from.setUTCDate(from.getUTCDate() - (days - 1));
   from.setUTCHours(0, 0, 0, 0);
 
-  // Pull aggregates (fully typed)
   const raw: AggRow[] = await prisma.clickAggDaily.findMany({
     where: { linkId, date: { gte: from } },
     orderBy: { date: "asc" },
     select: { date: true, clicks: true },
   });
 
-  const rows: DayRow[] = raw.map((x: AggRow) => ({
+  const rows: DayRow[] = raw.map((x) => ({
     day: x.date.toISOString().slice(0, 10),
     clicks: x.clicks,
   }));
 
-  // Explicitly typed map to avoid implicit any
   const map: Map<string, number> = new Map(
     rows.map((r: DayRow) => [r.day, r.clicks])
   );
 
-  // Fill missing days
   const series: DayRow[] = [];
   let total = 0;
 
@@ -83,15 +71,8 @@ export async function GET(req: NextRequest) {
 
     const clicks = map.get(day) ?? 0;
     total += clicks;
-
     series.push({ day, clicks });
   }
 
-  return NextResponse.json({
-    ok: true,
-    link,
-    total,
-    days,
-    series,
-  });
+  return NextResponse.json({ ok: true, link, total, days, series });
 }

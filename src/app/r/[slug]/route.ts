@@ -6,14 +6,12 @@ export async function GET(
   req: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
-  // Next.js (build) provides params as a Promise in this version
   const { slug: rawSlug } = await context.params;
 
-  // Fallback safety: if anything goes weird, parse from URL
-  let slug = rawSlug;
+  let slug = rawSlug || "";
   if (!slug) {
-    const pathname = new URL(req.url).pathname; // /r/can
-    const parts = pathname.split("/").filter(Boolean); // ["r","can"]
+    const pathname = new URL(req.url).pathname;
+    const parts = pathname.split("/").filter(Boolean);
     slug = parts[1] ?? "";
   }
 
@@ -38,7 +36,6 @@ export async function GET(
 
   if (!link) return new NextResponse("Not found", { status: 404 });
 
-  // Record click async (don’t block redirect)
   prisma.clickEvent
     .create({
       data: {
@@ -49,6 +46,6 @@ export async function GET(
       select: { id: true },
     })
     .catch(() => {});
-
+//correct
   return NextResponse.redirect(link.destination, { status: 302 });
 }
