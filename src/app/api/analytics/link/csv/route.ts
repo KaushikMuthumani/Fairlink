@@ -1,40 +1,49 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserDefaultOrgId } from "@/lib/org";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const orgId = await getOrCreateUserDefaultOrgId(userId);
+  if (!orgId) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const url = new URL(req.url);
-  const id = url.searchParams.get("id");
-  const days = Math.min(Math.max(Number(url.searchParams.get("days") ?? "30"), 7), 90);
-  if (!id) return new Response("Missing id", { status: 400 });
+  const linkId = url.searchParams.get("id");
+  const days = Number(url.searchParams.get("days") ?? "30");
 
+  if (!linkId) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  if (!Number.isFinite(days) || days < 1 || days > 365)
+    return NextResponse.json({ error: "Invalid days" }, { status: 400 });
+
+  // Ensure link belongs to org
   const link = await prisma.link.findFirst({
-    where: { id, orgId },
-    select: { id: true, slug: true },
+    where: { id: linkId, orgId },
+    select: { id: true },
   });
-  if (!link) return new Response("Not found", { status: 404 });
+  if (!link) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const start = new Date();
-  start.setUTCDate(start.getUTCDate() - (days - 1));
-  start.setUTCHours(0, 0, 0, 0);
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() - (days - 1));
+  from.setUTCHours(0, 0, 0, 0);
 
-  const rows = await prisma.$queryRaw<{ day: string; clicks: number }[]>`
-    SELECT
-      (date_trunc('day', "ts" AT TIME ZONE 'UTC'))::date::text AS day,
-      COUNT(*)::int AS clicks
-    FROM "ClickEvent"
-    WHERE "linkId" = ${link.id}
-      AND "ts" >= ${start}
-    GROUP BY day
-    ORDER BY day ASC
-  `;
+  const rows: Array<{ day: string; clicks: number }> = await prisma.clickAggDaily
+    .findMany({
+      where: { linkId, date: { gte: from } },
+      orderBy: { date: "asc" },
+      select: { date: true, clicks: true },
+    })
+    .then((rs) =>
+      rs.map((x) => ({
+        day: x.date.toISOString().slice(0, 10),
+        clicks: x.clicks,
+      }))
+    );
 
   const header = "day,clicks\n";
   const body = rows.map((r) => `${r.day},${r.clicks}`).join("\n");
@@ -43,7 +52,8 @@ export async function GET(req: Request) {
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${link.slug}-last-${days}-days.csv"`,
+      "Content-Disposition": `attachment; filename="link-${linkId}-last-${days}-days.csv"`,
+      "Cache-Control": "no-store",
     },
   });
 }
