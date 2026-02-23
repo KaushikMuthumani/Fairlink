@@ -4,16 +4,20 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateUserDefaultOrgId } from "@/lib/org";
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
+// 1. Update the type definition to wrap params in a Promise
+export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // 2. Await the params before using them
+  const { id } = await params;
 
   const orgId = await getOrCreateUserDefaultOrgId(userId);
   if (!orgId) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const link = await prisma.link.findFirst({
-    where: { id: params.id, orgId },
+    where: { id: id, orgId }, // Use the awaited 'id' here
     select: { id: true, enabled: true },
   });
 
